@@ -58,7 +58,7 @@ type IsRetryableStatusCodeFn2 func(ctx context.Context, code int) bool
 // The `Retryer` is designed to be stateless and reusable. Configuration is also copy and so a base `Retryer` can be
 // used and changed for one-off requests eg. changing max attempts resulting in a new `Retrier` for that request.
 type Retryer struct {
-	isRetryableFn           errorsext.IsRetryableFn2[error]
+	isRetryableFn           errorsext.IsRetryableFn3[error]
 	isRetryableStatusCodeFn IsRetryableStatusCodeFn2
 	isEarlyReturnFn         errorsext.EarlyReturnFn[error]
 	decodeFn                DecodeAnyFn
@@ -93,9 +93,9 @@ func NewRetryer() Retryer {
 		maxBytes:    2 * bytesext.MiB,
 		mode:        errorsext.MaxAttemptsNonRetryableReset,
 		maxAttempts: 5,
-		isRetryableFn: func(ctx context.Context, err error) (isRetryable bool) {
+		isRetryableFn: func(ctx context.Context, err error) (isRetryable bool, newErr error) {
 			_, isRetryable = errorsext.IsRetryableHTTP(err)
-			return
+			return isRetryable, err
 		},
 		isRetryableStatusCodeFn: func(_ context.Context, code int) bool { return IsRetryableStatusCode(code) },
 		isEarlyReturnFn: func(_ context.Context, err error) bool {
@@ -142,7 +142,7 @@ func (r Retryer) Client(client *http.Client) Retryer {
 }
 
 // IsRetryableFn sets the `IsRetryableFn` for the `Retryer`.
-func (r Retryer) IsRetryableFn(fn errorsext.IsRetryableFn2[error]) Retryer {
+func (r Retryer) IsRetryableFn(fn errorsext.IsRetryableFn3[error]) Retryer {
 	r.isRetryableFn = fn
 	return r
 }

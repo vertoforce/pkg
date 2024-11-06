@@ -36,11 +36,11 @@ func TestRetrierMaxAttempts(t *testing.T) {
 func TestRetrierMaxAttemptsNonRetryable(t *testing.T) {
 	var i, j int
 	returnErr := io.ErrUnexpectedEOF
-	result := NewRetryer[int, error]().IsRetryableFn(func(_ context.Context, e error) (isRetryable bool) {
+	result := NewRetryer[int, error]().IsRetryableFn(func(_ context.Context, e error) (isRetryable bool, newErr error) {
 		if returnErr == io.EOF {
-			return false
+			return false, e
 		} else {
-			return true
+			return true, e
 		}
 	}).Backoff(func(ctx context.Context, attempt int, _ error) {
 		j++
@@ -63,11 +63,11 @@ func TestRetrierMaxAttemptsNonRetryable(t *testing.T) {
 func TestRetrierMaxAttemptsNonRetryableReset(t *testing.T) {
 	var i, j int
 	returnErr := io.EOF
-	result := NewRetryer[int, error]().IsRetryableFn(func(_ context.Context, e error) (isRetryable bool) {
+	result := NewRetryer[int, error]().IsRetryableFn(func(_ context.Context, e error) (isRetryable bool, newErr error) {
 		if returnErr == io.EOF {
-			return false
+			return false, e
 		} else {
-			return true
+			return true, e
 		}
 	}).Backoff(func(ctx context.Context, attempt int, _ error) {
 		j++
@@ -141,9 +141,9 @@ func TestRetrierEarlyReturn(t *testing.T) {
 	// now let try with retryable overriding early return TL;DR retryable should take precedence over early return
 	earlyReturnCount = 0
 	isRetryableCount := 0
-	result = r.IsRetryableFn(func(ctx context.Context, err error) (isRetryable bool) {
+	result = r.IsRetryableFn(func(ctx context.Context, err error) (isRetryable bool, newErr error) {
 		isRetryableCount++
-		return errors.Is(err, io.EOF)
+		return errors.Is(err, io.EOF), err
 	}).Do(context.Background(), func(ctx context.Context) Result[int, error] {
 		return Err[int, error](io.EOF)
 	})
@@ -161,4 +161,15 @@ func TestRetrierEarlyReturn(t *testing.T) {
 	Equal(t, result.Err(), io.EOF)
 	Equal(t, earlyReturnCount, 1)
 	Equal(t, isRetryableCount, 0)
+}
+
+func TestOverwriteError(t *testing.T) {
+	var overwrite = errors.New("overwrite")
+	result := NewRetryer[int, error]().MaxAttempts(MaxAttempts, 1).IsRetryableFn(func(ctx context.Context, e error) (isRetryable bool, newE error) {
+		return false, overwrite
+	}).Do(context.Background(), func(ctx context.Context) Result[int, error] {
+		return Err[int, error](io.EOF)
+	})
+	Equal(t, result.IsErr(), true)
+	Equal(t, result.Err(), overwrite)
 }
